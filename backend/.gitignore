@@ -1,1 +1,2 @@
 .env
+/internal/local_static.go
