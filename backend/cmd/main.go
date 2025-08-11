@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-
 	"github.com/joho/godotenv"
 )
 
@@ -53,4 +52,5 @@ func main() {
 func LoadApis(){
 	http.HandleFunc("/test",api.Test)
 	http.HandleFunc("/register",api.Register)
+	http.HandleFunc("/login",api.Login)
 }

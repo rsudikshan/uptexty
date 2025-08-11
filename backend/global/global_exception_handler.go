@@ -14,6 +14,10 @@ func HandleError(e error, w http.ResponseWriter) {
 
 	case *runtime_errors.BadRequestError:
 		w.WriteHeader(http.StatusBadRequest)
+
+	
+	case *runtime_errors.UnauthorizedError:
+		w.WriteHeader(http.StatusUnauthorized)
 	}
 
 	w.Header().Set("Content-type","application/json")
