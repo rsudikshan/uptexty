@@ -1,0 +1,7 @@
+CREATE TABLE user_table(
+id SERIAL PRIMARY KEY, 
+email VARCHAR(200) UNIQUE NOT NULL, 
+username VARCHAR(200) NOT NULL, 
+password VARCHAR(200) NOT NULL,
+created_at TIMESTAMPTZ DEFAULT now()
+);

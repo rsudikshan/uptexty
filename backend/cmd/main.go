@@ -23,6 +23,8 @@ func main() {
 	}
 
 	err = db.ConnectToDbServer()
+	
+	defer db.DB.Close()
 
 	if err!=nil{
 		fmt.Println("Error starting server: "+err.Error())
@@ -50,4 +52,5 @@ func main() {
 
 func LoadApis(){
 	http.HandleFunc("/test",api.Test)
+	http.HandleFunc("/register",api.Register)
 }
