@@ -52,12 +52,12 @@ func Login(w http.ResponseWriter, req *http.Request){
 		return
 	}
 
-	err = service.LoginUser(loginRequest)
+	loginResponse,err := service.LoginUser(loginRequest)
 
 	if err!=nil{
 		global.HandleError(err,w)
 		return
 	}
 
-	global.Success("Login successful",w)
+	global.SuccessWithBody("Login successful",loginResponse,w)
 }

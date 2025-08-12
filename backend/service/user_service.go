@@ -4,6 +4,8 @@ import (
 	"backend/internal/db"
 	"backend/internal/runtime_errors"
 	"backend/payloads/request"
+	"backend/payloads/response"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -38,12 +40,14 @@ func RegisterUser(registerRequest request.RegisterRequest) error {
 	return nil
 }
 
-func LoginUser(loginRequest request.LoginRequest) error {
+func LoginUser(loginRequest request.LoginRequest) (response.LoginResponse, error) {
 
 	var err error
 
+	var response response.LoginResponse
+
 	if loginRequest.Email == "" || loginRequest.Password == ""{
-		return &runtime_errors.BadRequestError{
+		return response,&runtime_errors.BadRequestError{
 			Message: "Fields cannot be empty.",
 		}
 	}
@@ -53,13 +57,13 @@ func LoginUser(loginRequest request.LoginRequest) error {
 	resultSet,err :=  db.DB.Query(queryStr,loginRequest.Email)
 
 	if err!=nil{
-		return &runtime_errors.BadRequestError{
+		return response,&runtime_errors.BadRequestError{
 			Message: err.Error(),
 		}
 	}
 
 	if !resultSet.Next(){
-		return &runtime_errors.UnauthorizedError{
+		return response,&runtime_errors.UnauthorizedError{
 			Message: "User not found.",
 		}
 	}
@@ -69,7 +73,7 @@ func LoginUser(loginRequest request.LoginRequest) error {
 	err = resultSet.Scan(&password)
 
 	if err!=nil{
-		return &runtime_errors.BadRequestError{
+		return response,&runtime_errors.BadRequestError{
 			Message: err.Error(),
 		}
 	}
@@ -77,12 +81,18 @@ func LoginUser(loginRequest request.LoginRequest) error {
 	err = bcrypt.CompareHashAndPassword([]byte(password),[]byte(loginRequest.Password))
 
 	if err !=nil{
-		return &runtime_errors.UnauthorizedError{
+		return response,&runtime_errors.UnauthorizedError{
 			Message: "Invalid password.",
 		}
 	}
 
+	response.Jwt,err = CreateJwt(loginRequest.Email)
 
+	if err!= nil {
+		return response,&runtime_errors.UnauthorizedError{
+			Message: err.Error(),
+		}
+	}
 
-	return nil
+	return response,nil
 }

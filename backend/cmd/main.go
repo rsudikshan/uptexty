@@ -3,9 +3,11 @@ package main
 import (
 	"backend/api"
 	"backend/internal/db"
+	"backend/internal/middlewares"
 	"fmt"
 	"net/http"
 	"os"
+
 	"github.com/joho/godotenv"
 )
 
@@ -50,7 +52,7 @@ func main() {
 }
 
 func LoadApis(){
-	http.HandleFunc("/test",api.Test)
+	http.Handle("/test",middlewares.JwtFilter(http.HandlerFunc(api.Test)))
 	http.HandleFunc("/register",api.Register)
 	http.HandleFunc("/login",api.Login)
 }
