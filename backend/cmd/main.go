@@ -54,7 +54,10 @@ func main() {
 
 func LoadApis(){
 	http.Handle("/test",middlewares.JwtFilter(http.HandlerFunc(api.Test)))
-	http.HandleFunc("/register",api.Register)
-	http.HandleFunc("/login",api.Login)
-	http.Handle("/upload",middlewares.JwtFilter(http.HandlerFunc(core.UploadCsv)))
+
+	//auth
+	http.Handle("/register",middlewares.CorsMiddleware(http.HandlerFunc(api.Register)))
+	http.Handle("/login",middlewares.CorsMiddleware(http.HandlerFunc(api.Login)))
+
+	http.Handle("/upload",middlewares.CorsMiddleware(middlewares.JwtFilter(http.HandlerFunc(core.UploadCsv))))
 }
