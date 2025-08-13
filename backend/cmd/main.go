@@ -2,6 +2,7 @@ package main
 
 import (
 	"backend/api"
+	"backend/api/core"
 	"backend/internal/db"
 	"backend/internal/middlewares"
 	"fmt"
@@ -55,4 +56,5 @@ func LoadApis(){
 	http.Handle("/test",middlewares.JwtFilter(http.HandlerFunc(api.Test)))
 	http.HandleFunc("/register",api.Register)
 	http.HandleFunc("/login",api.Login)
+	http.Handle("/upload",middlewares.JwtFilter(http.HandlerFunc(core.UploadCsv)))
 }

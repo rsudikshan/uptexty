@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS csv_rows;
+DROP TABLE IF EXISTS csv_table;

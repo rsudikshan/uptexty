@@ -8,11 +8,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-func CreateJwt(email string) (string,error) {
+func CreateJwt(id int,email string) (string,error) {
 
 	var err error
 
 	claims := jwt.MapClaims{
+		"id":id,  // this will get converted to float
 		"email":email,
 		"exp":time.Now().Add(time.Hour*24).Unix(),
 	}

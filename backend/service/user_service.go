@@ -5,7 +5,6 @@ import (
 	"backend/internal/runtime_errors"
 	"backend/payloads/request"
 	"backend/payloads/response"
-
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -52,7 +51,7 @@ func LoginUser(loginRequest request.LoginRequest) (response.LoginResponse, error
 		}
 	}
 
-	queryStr := "SELECT (password) FROM user_table WHERE email = $1"
+	queryStr := "SELECT id,password FROM user_table WHERE email = $1"
 
 	resultSet,err :=  db.DB.Query(queryStr,loginRequest.Email)
 
@@ -68,9 +67,10 @@ func LoginUser(loginRequest request.LoginRequest) (response.LoginResponse, error
 		}
 	}
 
+	var id int
 	var password string
 
-	err = resultSet.Scan(&password)
+	err = resultSet.Scan(&id,&password)
 
 	if err!=nil{
 		return response,&runtime_errors.BadRequestError{
@@ -86,7 +86,7 @@ func LoginUser(loginRequest request.LoginRequest) (response.LoginResponse, error
 		}
 	}
 
-	response.Jwt,err = CreateJwt(loginRequest.Email)
+	response.Jwt,err = CreateJwt(id,loginRequest.Email)
 
 	if err!= nil {
 		return response,&runtime_errors.UnauthorizedError{

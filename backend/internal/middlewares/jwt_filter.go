@@ -3,6 +3,7 @@ package middlewares
 import (
 	"backend/global"
 	"backend/internal/runtime_errors"
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -65,6 +66,8 @@ func JwtFilter(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w,req)
+		ctx := context.WithValue(req.Context(), ClaimsKey, claims)
+
+		next.ServeHTTP(w,req.WithContext(ctx))
 	})
 }
