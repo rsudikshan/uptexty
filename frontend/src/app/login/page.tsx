@@ -2,6 +2,7 @@
 
 import { useState, ChangeEvent, FormEvent } from "react";
 import { Container, TextField, Button, Typography, Box } from "@mui/material";
+import { useRouter } from "next/navigation";
 
 interface LoginForm {
   email: string;
@@ -9,6 +10,7 @@ interface LoginForm {
 }
 
 export default function LoginPage() {
+  const router = useRouter();
   const [form, setForm] = useState<LoginForm>({
     email: "",
     password: "",
@@ -32,7 +34,9 @@ export default function LoginPage() {
       });
       const resJson = await res.json();
       if (resJson.status) {
-        alert("Login successful!");
+        localStorage.setItem("jwt",resJson.body.jwt);
+        router.push("/csv_dashboard");
+        // alert("Login successful!");
         console.log("Token or user data:");
       } else {
         alert(`Error: ${resJson.message || "Login failed"}`);

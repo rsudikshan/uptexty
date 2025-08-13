@@ -8,56 +8,85 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-
+	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 )
 
 func main() {
-
 	var err error
 
-	//env path
+	// Load env file
 	err = godotenv.Load("C:/uptexty-assignment/backend/.env")
-
-	if err!=nil{
-		fmt.Println("Error starting server: "+err.Error())
+	if err != nil {
+		fmt.Println("Error loading .env file: " + err.Error())
 		return
 	}
 
+	// Connect to DB
 	err = db.ConnectToDbServer()
-	
 	defer db.DB.Close()
-
-	if err!=nil{
-		fmt.Println("Error starting server: "+err.Error())
+	if err != nil {
+		fmt.Println("Error connecting to DB: " + err.Error())
 		return
 	}
 
-	port,exists := os.LookupEnv("PORT")
-
+	port, exists := os.LookupEnv("PORT")
 	if !exists {
-		fmt.Println("Error starting server: Port address not specified.")
+		fmt.Println("PORT not specified in environment.")
 		return
 	}
 
-	LoadApis()
+	// Create router and load routes
+	router := mux.NewRouter()
+	LoadApis(router)
 
-	//starting the server
-	err = http.ListenAndServe(port,nil)
-
-	if err!=nil{
-		fmt.Println("Error starting server: "+err.Error())
-		return
+	// Start server
+	fmt.Println("Server running on port " + port)
+	err = http.ListenAndServe(port, router)
+	if err != nil {
+		fmt.Println("Error starting server: " + err.Error())
 	}
-
 }
 
-func LoadApis(){
-	http.Handle("/test",middlewares.JwtFilter(http.HandlerFunc(api.Test)))
+func LoadApis(router *mux.Router) {
+	// Apply CORS to all routes globally
+	router.Use(middlewares.CorsMiddleware)
 
-	//auth
-	http.Handle("/register",middlewares.CorsMiddleware(http.HandlerFunc(api.Register)))
-	http.Handle("/login",middlewares.CorsMiddleware(http.HandlerFunc(api.Login)))
+	// Public routes (no JWT)
+	router.Handle("/register", http.HandlerFunc(api.Register))
+	router.Handle("/login", http.HandlerFunc(api.Login))
 
-	http.Handle("/upload",middlewares.CorsMiddleware(middlewares.JwtFilter(http.HandlerFunc(core.UploadCsv))))
+	// Authenticated routes
+	router.Handle("/test",
+		middlewares.JwtFilter(http.HandlerFunc(api.Test)),
+	)
+
+	// File handling
+	router.Handle("/upload",
+		middlewares.JwtFilter(http.HandlerFunc(core.UploadCsv)),
+	)
+	router.Handle("/files",
+		middlewares.JwtFilter(http.HandlerFunc(core.GetUploadedFiles)),
+	)
+	router.Handle("/files/{id}",
+		middlewares.JwtFilter(http.HandlerFunc(core.GetRows)),
+	)
+
+	// Row operations
+	router.Handle("/files/{id}/rows",
+		middlewares.JwtFilter(http.HandlerFunc(core.CreateRow)),
+	).Methods("POST")
+
+	router.Handle("/files/{fileId}/rows/{rowId}",
+		middlewares.JwtFilter(http.HandlerFunc(core.UpdateRow)),
+	).Methods("PUT")
+
+	router.Handle("/files/{fileId}/rows/{rowId}",
+		middlewares.JwtFilter(http.HandlerFunc(core.DeleteRow)),
+	).Methods("DELETE")
+
+	// Global OPTIONS handler for CORS preflight
+	router.Methods("OPTIONS").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 }
