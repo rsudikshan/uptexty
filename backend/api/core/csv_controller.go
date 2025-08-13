@@ -23,6 +23,7 @@ func UploadCsv(w http.ResponseWriter, req *http.Request) {
 	req.ParseMultipartForm( 10 << 20)
 
 	file,_,err := req.FormFile("file")
+	filename := req.FormValue("filename")
 
 	if err!=nil {
 		http.Error(w,err.Error(),http.StatusBadRequest)
@@ -37,7 +38,7 @@ func UploadCsv(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = core_service.UploadCsvService(file,"test",id)
+	err = core_service.UploadCsvService(file,filename,id)
 
 	if err!=nil {
 		global.HandleError(err,w)
