@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent, useCallback, useMemo, memo } from "react";
 import {
   Box,
   Button,
@@ -22,12 +22,19 @@ import {
   DialogContent,
   DialogActions,
   Chip,
+  Pagination,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import {
   ArrowBack,
   Add,
   Delete,
   DragIndicator,
+  KeyboardArrowUp,
+  KeyboardArrowDown,
 } from "@mui/icons-material";
 
 interface FileItem {
@@ -42,15 +49,140 @@ interface CSVRow {
   input_text: string;
 }
 
+// Memoized row component to prevent unnecessary re-renders
+const CSVRowComponent = memo(({ 
+  row, 
+  index, 
+  globalIndex,
+  draggedRowIndex,
+  dragOverIndex,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onInsertRow,
+  onDeleteRow,
+  onEditRow 
+}: {
+  row: CSVRow;
+  index: number;
+  globalIndex: number;
+  draggedRowIndex: number | null;
+  dragOverIndex: number | null;
+  onDragStart: (e: React.DragEvent, index: number) => void;
+  onDragOver: (e: React.DragEvent, index: number) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent, dropIndex: number) => void;
+  onInsertRow: (index: number) => void;
+  onDeleteRow: (row: CSVRow, index: number) => void;
+  onEditRow: (row: CSVRow, newText: string) => void;
+}) => {
+  const [localText, setLocalText] = useState(row.input_text);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Update local text when row changes
+  useEffect(() => {
+    setLocalText(row.input_text);
+    setHasChanges(false);
+  }, [row.input_text]);
+
+  const handleTextChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setLocalText(newValue);
+    setHasChanges(newValue !== row.input_text);
+  }, [row.input_text]);
+
+  const handleBlur = useCallback(() => {
+    if (hasChanges && localText !== row.input_text) {
+      onEditRow(row, localText);
+      setHasChanges(false);
+    }
+  }, [hasChanges, localText, row, onEditRow]);
+
+  return (
+    <TableRow
+      draggable
+      onDragStart={(e) => onDragStart(e, globalIndex)}
+      onDragOver={(e) => onDragOver(e, globalIndex)}
+      onDragLeave={onDragLeave}
+      onDrop={(e) => onDrop(e, globalIndex)}
+      sx={{
+        cursor: "move",
+        "&:hover": { backgroundColor: "#f5f5f5" },
+        backgroundColor: 
+          draggedRowIndex === globalIndex ? "#e3f2fd" : 
+          dragOverIndex === globalIndex ? "#f3e5f5" : "inherit",
+        borderLeft: dragOverIndex === globalIndex ? "3px solid #9c27b0" : "none",
+      }}
+    >
+      <TableCell sx={{ width: 120 }}>
+        <Box display="flex" gap={1}>
+          <IconButton size="small" sx={{ cursor: "grab" }}>
+            <DragIndicator />
+          </IconButton>
+          <IconButton 
+            size="small" 
+            color="primary"
+            onClick={() => onInsertRow(globalIndex)}
+            title="Insert row before this one"
+          >
+            <Add />
+          </IconButton>
+          <IconButton 
+            size="small" 
+            color="error"
+            onClick={() => onDeleteRow(row, globalIndex)}
+            title="Delete this row"
+          >
+            <Delete />
+          </IconButton>
+        </Box>
+      </TableCell>
+      <TableCell sx={{ width: 80 }}>
+        <Typography variant="body2" color="textSecondary">
+          {globalIndex + 1}
+        </Typography>
+      </TableCell>
+      <TableCell sx={{ width: 100 }}>
+        <Typography variant="body2" color="textSecondary">
+          {row.position.toFixed(3)}
+        </Typography>
+      </TableCell>
+      <TableCell>
+        <TextField
+          fullWidth
+          multiline
+          variant="outlined"
+          value={localText}
+          onChange={handleTextChange}
+          onBlur={handleBlur}
+          size="small"
+          sx={{ 
+            minWidth: 300,
+            '& .MuiInputBase-root': {
+              backgroundColor: hasChanges ? '#fff3e0' : 'inherit'
+            }
+          }}
+        />
+      </TableCell>
+    </TableRow>
+  );
+});
+
+CSVRowComponent.displayName = 'CSVRowComponent';
+
 export default function FilesPage() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filename, setFilename] = useState("");
   const [loading, setLoading] = useState(false);
   
-  // New state for CSV data display
+  // CSV data display state
   const [currentFile, setCurrentFile] = useState<FileItem | null>(null);
-  const [csvRows, setCsvRows] = useState<CSVRow[]>([]);
+  const [allCsvRows, setAllCsvRows] = useState<CSVRow[]>([]); // All rows
+  const [totalRows, setTotalRows] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(100);
   const [insertDialogOpen, setInsertDialogOpen] = useState(false);
   const [insertPosition, setInsertPosition] = useState(0);
   const [newRowText, setNewRowText] = useState("");
@@ -59,8 +191,18 @@ export default function FilesPage() {
 
   const token = localStorage.getItem("jwt");
 
+  // Calculate pagination
+  const totalPages = Math.ceil(totalRows / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+
+  // Get current page rows
+  const currentPageRows = useMemo(() => {
+    return allCsvRows.slice(startIndex, endIndex);
+  }, [allCsvRows, startIndex, endIndex]);
+
   // Fetch uploaded files
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
@@ -76,21 +218,21 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchFiles();
-  }, []);
+  }, [fetchFiles]);
 
   // Handle file input
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
     }
-  };
+  }, []);
 
   // Upload CSV file
-  const handleUpload = async () => {
+  const handleUpload = useCallback(async () => {
     if (!selectedFile || !filename) {
       alert("Please select a file and enter a filename.");
       return;
@@ -121,10 +263,10 @@ export default function FilesPage() {
       console.error("Upload error:", err);
       alert("Upload failed");
     }
-  };
+  }, [selectedFile, filename, token, fetchFiles]);
 
   // Fetch CSV rows for display
-  const fetchCSVRows = async (file: FileItem) => {
+  const fetchCSVRows = useCallback(async (file: FileItem, maintainPage = false) => {
     if (!token) return;
     setLoading(true);
     try {
@@ -136,10 +278,15 @@ export default function FilesPage() {
       const data = await res.json();
       
       if (data.status) {
-        // Sort rows by position to maintain order
         const sortedRows = (data.body || []).sort((a: CSVRow, b: CSVRow) => a.position - b.position);
-        setCsvRows(sortedRows);
+        setAllCsvRows(sortedRows);
+        setTotalRows(sortedRows.length);
         setCurrentFile(file);
+        
+        // Only reset to first page if not maintaining current page
+        if (!maintainPage) {
+          setCurrentPage(1);
+        }
       } else {
         alert("Failed to load CSV data: " + data.message);
       }
@@ -149,46 +296,45 @@ export default function FilesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   // Handle file click to display CSV data
-  const handleFileClick = (file: FileItem) => {
+  const handleFileClick = useCallback((file: FileItem) => {
     fetchCSVRows(file);
-  };
+  }, [fetchCSVRows]);
 
   // Handle back to file list
-  const handleBackToFiles = () => {
+  const handleBackToFiles = useCallback(() => {
     setCurrentFile(null);
-    setCsvRows([]);
-  };
+    setAllCsvRows([]);
+    setTotalRows(0);
+    setCurrentPage(1);
+  }, []);
 
   // Calculate position for new row insertion
-  const calculateInsertPosition = (index: number): number => {
-    if (csvRows.length === 0) return 1.0;
+  const calculateInsertPosition = useCallback((globalIndex: number): number => {
+    if (allCsvRows.length === 0) return 1.0;
     
-    if (index === 0) {
-      // Insert at beginning
-      return csvRows[0].position / 2;
-    } else if (index >= csvRows.length) {
-      // Insert at end
-      return csvRows[csvRows.length - 1].position + 1.0;
+    if (globalIndex === 0) {
+      return allCsvRows[0].position / 2;
+    } else if (globalIndex >= allCsvRows.length) {
+      return allCsvRows[allCsvRows.length - 1].position + 1.0;
     } else {
-      // Insert between two rows
-      const prevPosition = csvRows[index - 1].position;
-      const nextPosition = csvRows[index].position;
+      const prevPosition = allCsvRows[globalIndex - 1].position;
+      const nextPosition = allCsvRows[globalIndex].position;
       return (prevPosition + nextPosition) / 2;
     }
-  };
+  }, [allCsvRows]);
 
   // Handle insert row dialog
-  const handleInsertRow = (index: number) => {
-    setInsertPosition(index);
+  const handleInsertRow = useCallback((globalIndex: number) => {
+    setInsertPosition(globalIndex);
     setNewRowText("");
     setInsertDialogOpen(true);
-  };
+  }, []);
 
   // Confirm insert row
-  const confirmInsertRow = async () => {
+  const confirmInsertRow = useCallback(async () => {
     if (!token || !currentFile || !newRowText.trim()) return;
     
     const position = calculateInsertPosition(insertPosition);
@@ -208,8 +354,7 @@ export default function FilesPage() {
 
       const data = await res.json();
       if (data.status) {
-        // Refresh CSV data
-        fetchCSVRows(currentFile);
+        fetchCSVRows(currentFile, true); // Maintain current page
         setInsertDialogOpen(false);
       } else {
         alert("Failed to insert row: " + data.message);
@@ -218,29 +363,47 @@ export default function FilesPage() {
       console.error("Error inserting row:", err);
       alert("Failed to insert row");
     }
-  };
+  }, [token, currentFile, newRowText, insertPosition, calculateInsertPosition, fetchCSVRows]);
+
+  // Handle page change
+  const handlePageChange = useCallback((_: React.ChangeEvent<unknown>, page: number) => {
+    setCurrentPage(page);
+  }, []);
+
+  // Handle rows per page change
+  const handleRowsPerPageChange = useCallback((event: any) => {
+    const newRowsPerPage = event.target.value;
+    setRowsPerPage(newRowsPerPage);
+    setCurrentPage(1); // Reset to first page
+  }, []);
+
+  // Navigate to specific row
+  const goToRow = useCallback((rowNumber: number) => {
+    const pageForRow = Math.ceil(rowNumber / rowsPerPage);
+    setCurrentPage(pageForRow);
+  }, [rowsPerPage]);
 
   // Handle drag start
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedRowIndex(index);
+  const handleDragStart = useCallback((e: React.DragEvent, globalIndex: number) => {
+    setDraggedRowIndex(globalIndex);
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/html", "");
-  };
+  }, []);
 
   // Handle drag over
-  const handleDragOver = (e: React.DragEvent, index: number) => {
+  const handleDragOver = useCallback((e: React.DragEvent, globalIndex: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setDragOverIndex(index);
-  };
+    setDragOverIndex(globalIndex);
+  }, []);
 
   // Handle drag leave
-  const handleDragLeave = () => {
+  const handleDragLeave = useCallback(() => {
     setDragOverIndex(null);
-  };
+  }, []);
 
   // Handle drop
-  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+  const handleDrop = useCallback(async (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
     setDragOverIndex(null);
     
@@ -249,7 +412,7 @@ export default function FilesPage() {
       return;
     }
 
-    const draggedRow = csvRows[draggedRowIndex];
+    const draggedRow = allCsvRows[draggedRowIndex];
     const newPosition = calculateInsertPosition(dropIndex);
 
     try {
@@ -267,8 +430,7 @@ export default function FilesPage() {
 
       const data = await res.json();
       if (data.status) {
-        // Refresh CSV data
-        fetchCSVRows(currentFile);
+        fetchCSVRows(currentFile, true); // Maintain current page
       } else {
         alert("Failed to reorder row: " + data.message);
       }
@@ -278,10 +440,10 @@ export default function FilesPage() {
     }
     
     setDraggedRowIndex(null);
-  };
+  }, [draggedRowIndex, token, currentFile, allCsvRows, calculateInsertPosition, fetchCSVRows]);
 
   // Handle delete row
-    const handleDeleteRow = async (row: CSVRow, index: number) => {
+  const handleDeleteRow = useCallback(async (row: CSVRow, globalIndex: number) => {
     if (!token || !currentFile) return;
 
     if (!confirm("Are you sure you want to delete this row?")) return;
@@ -295,14 +457,14 @@ export default function FilesPage() {
       });
 
       if (!res.ok) {
-        const text = await res.text(); // read plain text if error
+        const text = await res.text();
         alert("Failed to delete row: " + text);
         return;
       }
 
-      const data = await res.json(); // now safe, should be JSON for success
+      const data = await res.json();
       if (data.status) {
-        fetchCSVRows(currentFile);
+        fetchCSVRows(currentFile, true); // Maintain current page
       } else {
         alert("Failed to delete row: " + data.message);
       }
@@ -310,11 +472,16 @@ export default function FilesPage() {
       console.error("Error deleting row:", err);
       alert("Failed to delete row");
     }
-  };
+  }, [token, currentFile, fetchCSVRows]);
 
-  // Handle edit row
-  const handleEditRow = async (row: CSVRow, newText: string) => {
+  // Handle edit row with optimistic update
+  const handleEditRow = useCallback(async (row: CSVRow, newText: string) => {
     if (!token || !currentFile || !newText.trim()) return;
+    
+    // Optimistic update
+    setAllCsvRows(prev => prev.map(r => 
+      r.id === row.id ? { ...r, input_text: newText.trim() } : r
+    ));
     
     try {
       const res = await fetch(`http://localhost:8080/files/${currentFile.id}/rows/${row.id}`, {
@@ -330,17 +497,17 @@ export default function FilesPage() {
       });
 
       const data = await res.json();
-      if (data.status) {
-        // Refresh CSV data
-        fetchCSVRows(currentFile);
-      } else {
+      if (!data.status) {
+        // Revert on failure
         alert("Failed to update row: " + data.message);
+        fetchCSVRows(currentFile, true); // Maintain current page
       }
     } catch (err) {
       console.error("Error updating row:", err);
       alert("Failed to update row");
+      fetchCSVRows(currentFile);
     }
-  };
+  }, [token, currentFile, fetchCSVRows]);
 
   // If viewing CSV data
   if (currentFile) {
@@ -354,10 +521,47 @@ export default function FilesPage() {
             {currentFile.filename}
           </Typography>
           <Chip 
-            label={`${csvRows.length} rows`} 
+            label={`${totalRows} total rows`} 
             color="primary" 
             size="small" 
             sx={{ ml: 2 }} 
+          />
+          <Chip 
+            label={`Page ${currentPage} of ${totalPages}`} 
+            color="secondary" 
+            size="small" 
+            sx={{ ml: 1 }} 
+          />
+        </Box>
+
+        {/* Pagination Controls */}
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Box display="flex" alignItems="center" gap={2}>
+            <FormControl size="small" sx={{ minWidth: 120 }}>
+              <InputLabel>Rows per page</InputLabel>
+              <Select
+                value={rowsPerPage}
+                label="Rows per page"
+                onChange={handleRowsPerPageChange}
+              >
+                <MenuItem value={50}>50</MenuItem>
+                <MenuItem value={100}>100</MenuItem>
+                <MenuItem value={200}>200</MenuItem>
+                <MenuItem value={500}>500</MenuItem>
+              </Select>
+            </FormControl>
+            
+            <Typography variant="body2" color="textSecondary">
+              Showing rows {startIndex + 1}-{Math.min(endIndex, totalRows)} of {totalRows}
+            </Typography>
+          </Box>
+          
+          <Pagination 
+            count={totalPages}
+            page={currentPage}
+            onChange={handlePageChange}
+            color="primary"
+            size="large"
           />
         </Box>
 
@@ -377,98 +581,60 @@ export default function FilesPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {csvRows.map((row, index) => (
-                  <TableRow
-                    key={row.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, index)}
-                    sx={{
-                      cursor: "move",
-                      "&:hover": { backgroundColor: "#f5f5f5" },
-                      backgroundColor: 
-                        draggedRowIndex === index ? "#e3f2fd" : 
-                        dragOverIndex === index ? "#f3e5f5" : "inherit",
-                      borderLeft: dragOverIndex === index ? "3px solid #9c27b0" : "none",
-                    }}
-                  >
-                    <TableCell>
-                      <Box display="flex" gap={1}>
-                        <IconButton size="small" sx={{ cursor: "grab" }}>
-                          <DragIndicator />
-                        </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="primary"
-                          onClick={() => handleInsertRow(index)}
-                          title="Insert row before this one"
-                        >
-                          <Add />
-                        </IconButton>
-                        <IconButton 
-                          size="small" 
-                          color="error"
-                          onClick={() => handleDeleteRow(row, index)}
-                          title="Delete this row"
-                        >
-                          <Delete />
-                        </IconButton>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="textSecondary">
-                        {index + 1}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="textSecondary">
-                        {row.position.toFixed(3)}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <TextField
-                        fullWidth
-                        multiline
+                {currentPageRows.map((row, index) => {
+                  const globalIndex = startIndex + index;
+                  return (
+                    <CSVRowComponent
+                      key={row.id}
+                      row={row}
+                      index={index}
+                      globalIndex={globalIndex}
+                      draggedRowIndex={draggedRowIndex}
+                      dragOverIndex={dragOverIndex}
+                      onDragStart={handleDragStart}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onInsertRow={handleInsertRow}
+                      onDeleteRow={handleDeleteRow}
+                      onEditRow={handleEditRow}
+                    />
+                  );
+                })}
+                
+                {/* Add row at end button - only show on last page */}
+                {currentPage === totalPages && (
+                  <TableRow>
+                    <TableCell colSpan={4}>
+                      <Button
+                        startIcon={<Add />}
+                        onClick={() => handleInsertRow(totalRows)}
                         variant="outlined"
-                        value={row.input_text}
-                        onChange={(e) => {
-                          // Update local state immediately for responsive UI
-                          setCsvRows(prev => prev.map(r => 
-                            r.id === row.id ? { ...r, input_text: e.target.value } : r
-                          ));
-                        }}
-                        onBlur={(e) => {
-                          // Save to backend on blur
-                          if (e.target.value !== row.input_text) {
-                            handleEditRow(row, e.target.value);
-                          }
-                        }}
-                        size="small"
-                        sx={{ minWidth: 300 }}
-                      />
+                        fullWidth
+                        sx={{ py: 2 }}
+                      >
+                        Add Row at End
+                      </Button>
                     </TableCell>
                   </TableRow>
-                ))}
-                {/* Add row at end button */}
-                <TableRow>
-                  <TableCell colSpan={4}>
-                    <Button
-                      startIcon={<Add />}
-                      onClick={() => handleInsertRow(csvRows.length)}
-                      variant="outlined"
-                      fullWidth
-                      sx={{ py: 2 }}
-                    >
-                      Add Row at End
-                    </Button>
-                  </TableCell>
-                </TableRow>
+                )}
               </TableBody>
             </Table>
           </TableContainer>
         )}
+
+        {/* Bottom Pagination */}
+        <Box display="flex" justifyContent="center" mt={2}>
+          <Pagination 
+            count={totalPages}
+            page={currentPage}
+            onChange={handlePageChange}
+            color="primary"
+            size="large"
+            showFirstButton
+            showLastButton
+          />
+        </Box>
 
         {/* Insert Row Dialog */}
         <Dialog 
@@ -511,7 +677,7 @@ export default function FilesPage() {
     );
   }
 
-  // File list view (original)
+  // File list view
   return (
     <Box p={4}>
       <Typography variant="h4" gutterBottom>
@@ -557,7 +723,7 @@ export default function FilesPage() {
         </Box>
       ) : (
         <List>
-          {files.map((file, index) => (
+          {files.map((file) => (
             <ListItem
               key={file.id}
               onClick={() => handleFileClick(file)}
