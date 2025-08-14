@@ -167,10 +167,14 @@ func CreateRowService(userID, fileID int, position float64, inputText string) (*
 			SELECT 1 FROM csv_table WHERE id = $1 AND uploaded_by = $2
 		)`, fileID, userID).Scan(&fileExists)
 	if err != nil {
-		return nil, fmt.Errorf("error checking file ownership: %v", err)
+		return nil, &runtime_errors.InternalServerError{
+			Message: err.Error(),
+		}
 	}
 	if !fileExists {
-		return nil, fmt.Errorf("file not found or access denied")
+		return nil, &runtime_errors.BadRequestError{
+			Message: "File not found or access denied",
+		}
 	}
 
 	var newRow response.GetRowsResponse
@@ -181,7 +185,9 @@ func CreateRowService(userID, fileID int, position float64, inputText string) (*
 		fileID, position, inputText,
 	).Scan(&newRow.Id, &newRow.Position, &newRow.InputText)
 	if err != nil {
-		return nil, fmt.Errorf("error creating row: %v", err)
+		return nil, &runtime_errors.InternalServerError{
+			Message: err.Error(),
+		}
 	}
 
 	return &newRow, nil
@@ -196,10 +202,10 @@ func UpdateRowService(userID, fileID, rowID int, position float64, inputText str
 			WHERE r.id = $1 AND r.csv_file_id = $2 AND f.uploaded_by = $3
 		)`, rowID, fileID, userID).Scan(&rowExists)
 	if err != nil {
-		return nil, fmt.Errorf("error checking row ownership: %v", err)
+		return nil, &runtime_errors.InternalServerError{Message: err.Error()}
 	}
 	if !rowExists {
-		return nil, fmt.Errorf("row not found or access denied")
+		return nil, &runtime_errors.BadRequestError{Message: "Row doesnt exist"}
 	}
 
 	var updatedRow response.GetRowsResponse
@@ -211,7 +217,7 @@ func UpdateRowService(userID, fileID, rowID int, position float64, inputText str
 		position, inputText, rowID, fileID,
 	).Scan(&updatedRow.Id, &updatedRow.Position, &updatedRow.InputText)
 	if err != nil {
-		return nil, fmt.Errorf("error updating row: %v", err)
+		return nil, &runtime_errors.InternalServerError{Message: err.Error()}
 	}
 
 	return &updatedRow, nil
@@ -224,15 +230,15 @@ func DeleteRowService(userID, fileID, rowID int) error {
 			SELECT 1 FROM csv_table WHERE id = $2 AND uploaded_by = $3
 		)`, rowID, fileID, userID)
 	if err != nil {
-		return fmt.Errorf("error deleting row: %v", err)
+		return &runtime_errors.InternalServerError{Message: err.Error()}
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("error checking deletion result: %v", err)
+		return &runtime_errors.InternalServerError{Message: err.Error()}
 	}
 	if rowsAffected == 0 {
-		return fmt.Errorf("row not found or access denied")
+		return &runtime_errors.BadRequestError{Message: "Row not found"}
 	}
 
 	return nil

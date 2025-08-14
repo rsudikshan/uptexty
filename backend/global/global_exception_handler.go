@@ -8,6 +8,9 @@ import (
 )
 
 func HandleError(e error, w http.ResponseWriter) {
+
+	w.Header().Set("Content-type","application/json")
+
 	switch e.(type) {
 	case *runtime_errors.InternalServerError:
 		w.WriteHeader(http.StatusInternalServerError)
@@ -18,9 +21,12 @@ func HandleError(e error, w http.ResponseWriter) {
 	
 	case *runtime_errors.UnauthorizedError:
 		w.WriteHeader(http.StatusUnauthorized)
+	
+	default:
+		w.WriteHeader(http.StatusBadRequest)
 	}
 
-	w.Header().Set("Content-type","application/json")
+	
 	json.NewEncoder(w).Encode(models.ResponseModel{
 		Success: false,
 		Message: "Operation Failed: "+e.Error(),
